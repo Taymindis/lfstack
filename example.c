@@ -10,6 +10,8 @@
 struct timeval  tv1, tv2;
 lfstack_t results;
 
+#define total_put 100000
+
 void *worker(void *);
 void *worker(void *arg)
 {
@@ -55,6 +57,7 @@ int main(void)
     /* Spawn threads. */
     pthread_t threads[nthreads];
     printf("Using %d thread%s.\n", nthreads, nthreads == 1 ? "" : "s");
+    printf("Total requests %d \n", total_put);
     gettimeofday(&tv1, NULL);
     for (i = 0; i < nthreads; i++)
         pthread_create(threads + i, NULL, worker, NULL);
