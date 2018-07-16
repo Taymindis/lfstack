@@ -10,14 +10,14 @@
 struct timeval  tv1, tv2;
 lfstack_t results;
 
-#define total_put 100000
+#define total_put 500000
 
 void *worker(void *);
 void *worker(void *arg)
 {
     long long i = 0;
     long long *int_data;
-    while (i < 50000) {
+    while (i < total_put) {
         int_data = (long long*) malloc(sizeof(long long));
         assert(int_data != NULL);
         *int_data = i++;
