@@ -50,7 +50,7 @@ lfstack_destroy(&mystack);
 ```
 
 
-#### If you are using single thread POP. Please use `lfstack_single_pop` to get better result
+#### If you are using single thread POP. Please use `lfstack_single_pop` to get better performance
 
 
 ## Build and Installation
