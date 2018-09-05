@@ -13,7 +13,7 @@ file(GLOB_RECURSE example_test lfstack.c lfstack.h example.c)
 
 
 add_executable(lfstack-example ${example_test})
-target_link_libraries(lfstack-example PUBLIC pthread atomic)
+target_link_libraries(lfstack-example PUBLIC pthread)
 
 include_directories(src /usr/local/include)
 
@@ -26,74 +26,10 @@ SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wsign-compare -std=c11 -pedantic")
 ## packaging ##################################################################
 ###############################################################################
 add_library(${PROJNAME}.static STATIC ${sources})
-target_link_libraries(${PROJNAME}.static atomic)
+target_link_libraries(${PROJNAME}.static)
 set_target_properties(${PROJNAME}.static PROPERTIES OUTPUT_NAME ${PROJNAME})
 add_library(${PROJNAME} SHARED ${sources})
-target_link_libraries(${PROJNAME} atomic)
-
-###############################################################################
-## testing ####################################################################
-###############################################################################
-
-# this is for our testing framework
-# we don't add REQUIRED because it's just for testing
-find_package(GTest)
-
-if(GTEST_FOUND)
-  
-  if(NOT ${CMAKE_VERSION} LESS 3.2)
-      set(CMAKE_CXX_STANDARD 11)
-      set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  else()
-      message(STATUS "Checking compiler flags for C++11 support.")
-      # Set C++11 support flags for various compilers
-      include(CheckCXXCompilerFlag)
-      check_cxx_compiler_flag("-std=c++11" COMPILER_SUPPORTS_CXX11)
-      check_cxx_compiler_flag("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
-      if(COMPILER_SUPPORTS_CXX11)
-          message(STATUS "C++11 is supported.")
-          if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-              set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -stdlib=libc++")
-          else()
-              set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-          endif()
-      elseif(COMPILER_SUPPORTS_CXX0X)
-          message(STATUS "C++0x is supported.")
-          if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-              set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -stdlib=libc++")
-          else()
-              set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
-          endif()
-      else()
-          message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
-      endif()
-  endif()
-  message(STATUS "GTEST Available.")
-  enable_testing()
-
-  add_executable(lfstack-concurr-test ${sources_test})
-
-  # we add this define to prevent collision with the main
-  # this might be better solved by not adding the source with the main to the
-  # testing target
-  target_compile_definitions(lfstack-concurr-test PUBLIC UNIT_TESTS)
-
-  # this allows us to use our executable as a link library
-  # therefore we can inherit all compiler options and library dependencies
-  set_target_properties(${PROJ} PROPERTIES ENABLE_EXPORTS on)
-
-  target_link_libraries(lfstack-concurr-test PUBLIC
-    ${GTEST_BOTH_LIBRARIES} lfstack pthread
-    # addr_svc_cpp
-  )
-
-  target_include_directories(lfstack-concurr-test PUBLIC
-    ${GTEST_INCLUDE_DIRS} # doesn't do anything on Linux
-  )
-
-  add_test(lfstacktest lfstack-concurr-test)
-
-endif()
+target_link_libraries(${PROJNAME})
 
 
 # link_directories(/usr/local/lib /usr/lib)

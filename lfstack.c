@@ -1,87 +1,345 @@
+/*
+*
+* BSD 2-Clause License
+*
+* Copyright (c) 2018, Taymindis Woon
+* All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without
+* modification, are permitted provided that the following conditions are met:
+*
+* * Redistributions of source code must retain the above copyright notice, this
+*   list of conditions and the following disclaimer.
+*
+* * Redistributions in binary form must reproduce the above copyright notice,
+*   this list of conditions and the following disclaimer in the documentation
+*   and/or other materials provided with the distribution.
+*
+* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+* AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+* DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+* FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+* SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+* CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+* OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+* OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*
+*/
+#include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#if defined __GNUC__ || defined __CYGWIN__ || defined __MINGW32__ || defined __APPLE__
+
+#include <sys/time.h>
+#include <pthread.h>
+#include <sched.h>
+
+#define __LFQ_VAL_COMPARE_AND_SWAP __sync_val_compare_and_swap
+#define __LFQ_BOOL_COMPARE_AND_SWAP __sync_bool_compare_and_swap
+#define __LFQ_FETCH_AND_ADD __sync_fetch_and_add
+#define __LFQ_ADD_AND_FETCH __sync_add_and_fetch
+#define __LFQ_YIELD_THREAD sched_yield
+#define __LFQ_SYNC_MEMORY __sync_synchronize
+#define __LFQ_LOAD_MEMORY() __asm volatile( "lfence" )
+#define __LFQ_STORE_MEMORY() __asm volatile( "sfence" )
+
+#else
+
+#include <Windows.h>
+#include <time.h>
+#ifdef _WIN64
+inline BOOL __SYNC_BOOL_CAS(LONG64 volatile *dest, LONG64 input, LONG64 comparand) {
+	return InterlockedCompareExchangeNoFence64(dest, input, comparand) == comparand;
+}
+#define __LFQ_VAL_COMPARE_AND_SWAP(dest, comparand, input) \
+    InterlockedCompareExchangeNoFence64((LONG64 volatile *)dest, (LONG64)input, (LONG64)comparand)
+#define __LFQ_BOOL_COMPARE_AND_SWAP(dest, comparand, input) \
+    __SYNC_BOOL_CAS((LONG64 volatile *)dest, (LONG64)input, (LONG64)comparand)
+#define __LFQ_FETCH_AND_ADD InterlockedExchangeAddNoFence64
+#define __LFQ_ADD_AND_FETCH InterlockedAddNoFence64
+#define __LFQ_SYNC_MEMORY MemoryBarrier
+
+#else
+#ifndef asm
+#define asm __asm
+#endif
+inline BOOL __SYNC_BOOL_CAS(LONG volatile *dest, LONG input, LONG comparand) {
+	return InterlockedCompareExchangeNoFence(dest, input, comparand) == comparand;
+}
+#define __LFQ_VAL_COMPARE_AND_SWAP(dest, comparand, input) \
+    InterlockedCompareExchangeNoFence((LONG volatile *)dest, (LONG)input, (LONG)comparand)
+#define __LFQ_BOOL_COMPARE_AND_SWAP(dest, comparand, input) \
+    __SYNC_BOOL_CAS((LONG volatile *)dest, (LONG)input, (LONG)comparand)
+#define __LFQ_FETCH_AND_ADD InterlockedExchangeAddNoFence
+#define __LFQ_ADD_AND_FETCH InterlockedAddNoFence
+#define __LFQ_SYNC_MEMORY() asm mfence
+
+#endif
+#include <windows.h>
+#define __LFQ_YIELD_THREAD SwitchToThread
+#endif
+
 #include "lfstack.h"
+#define DEF_LFQ_ASSIGNED_SPIN 2048
 
-static lfstack_node_t *
-pop_(lfstack_t *lfstack) {
-    lfstack_cas_node_t curr, prev;
-    __atomic_load(&lfstack->head, &curr, __ATOMIC_ACQUIRE);
-    do {
-        if ( curr.aba == lfstack->head.aba /*__sync_bool_compare_and_swap(&lfstack->head.aba, curr.aba, curr.aba)*/) {
-            prev.node = curr.node->prev;
-            prev.aba = curr.aba + 1;
-        } else {
-            return NULL;
-        }
-    } while (!__atomic_compare_exchange(&lfstack->head, &curr, &prev, 1, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+#if defined __GNUC__ || defined __CYGWIN__ || defined __MINGW32__ || defined __APPLE__
+#define lfs_time_t long
+#define lfs_get_curr_time(_time_sec) \
+struct timeval _time_; \
+gettimeofday(&_time_, NULL); \
+*_time_sec = _time_.tv_sec
+#define lfs_diff_time(_etime_, _stime_) _etime_ - _stime_
+#else
+#define lfs_time_t time_t
+#define lfs_get_curr_time(_time_sec) time(_time_sec)
+#define lfs_diff_time(_etime_, _stime_) difftime(_etime_, _stime_)
+#endif
 
-    return curr.node;
+struct lfstack_cas_node_s {
+	void * value;
+	struct lfstack_cas_node_s *prev, *nextfree;
+	lfs_time_t _deactivate_tm;
+};
+
+//static lfstack_cas_node_t* __lfq_assigned(lfstack_t *);
+static void __lfs_recycle_free(lfstack_t *, lfstack_cas_node_t*);
+static void _lfs_check_free(lfstack_t *);
+static void *_pop(lfstack_t *);
+static void *_single_pop(lfstack_t *);
+static int _push(lfstack_t *, void* );
+
+static void *
+_pop(lfstack_t *lfs) {
+	lfstack_cas_node_t *head, *prev;
+	void *val;
+
+	for (;;) {
+		head = lfs->head;
+		__LFQ_SYNC_MEMORY();
+		/** ABA PROBLEM? in order to solve this, I use time free to avoid realloc the same aligned address **/
+		if (lfs->head == head) {
+			prev = head->prev;
+			if (prev) {
+				if (__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->head, head, prev)) {
+					val = head->value;
+					break;
+				}
+			} else {
+				/** Empty **/
+				val = NULL;
+				goto _done;
+			}
+		}
+	}
+	__lfs_recycle_free(lfs, head);
+	__LFQ_YIELD_THREAD();
+_done:
+// __asm volatile("" ::: "memory");
+	__LFQ_SYNC_MEMORY();
+	_lfs_check_free(lfs);
+	return val;
+}
+
+static void *
+_single_pop(lfstack_t *lfs) {
+	lfstack_cas_node_t *head, *prev;
+	void *val;
+
+	for (;;) {
+		head = lfs->head;
+		__LFQ_SYNC_MEMORY();
+		if (lfs->head == head) {
+			prev = head->prev;
+			if (prev) {
+				if (__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->head, head, prev)) {
+					val = head->value;
+					free(head);
+					break;
+				}
+			} else {
+				/** Empty **/
+				return NULL;
+			}
+		}
+	}
+	return val;
 }
 
 static int
-push_(lfstack_t *lfstack, void* value) {
-    lfstack_cas_node_t curr, next;
-    lfstack_node_t *node = malloc(sizeof(lfstack_node_t));
-    node->value = value;
-    next.node = node;
-    __atomic_load(&lfstack->head, &curr, __ATOMIC_ACQUIRE);
+_push(lfstack_t *lfs, void* value) {
+	lfstack_cas_node_t *head, *new_head;
+	new_head = (lfstack_cas_node_t*) malloc(sizeof(lfstack_cas_node_t));
+	if (new_head == NULL) {
+		perror("malloc");
+		return errno;
+	}
+	new_head->value = value;
+	new_head->nextfree = NULL;
+	for (;;) {
+		__LFQ_SYNC_MEMORY();
+		new_head->prev = head = lfs->head;
+		if (__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->head, head, new_head)) {
+			// always check any free value
+			_lfs_check_free(lfs);
+			return 0;
+		}
+	}
 
-    do {
-        next.aba = curr.aba + 1;
-        node->prev = curr.node;
-    } while (!__atomic_compare_exchange(&lfstack->head, &curr, &next, 1, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
-    return 1;
+	/*It never be here*/
+	return -1;
+}
+
+static void
+__lfs_recycle_free(lfstack_t *lfs, lfstack_cas_node_t* freenode) {
+	lfstack_cas_node_t *freed;
+	do {
+		freed = lfs->move_free;
+	} while (!__LFQ_BOOL_COMPARE_AND_SWAP(&freed->nextfree, NULL, freenode) );
+
+	lfs_get_curr_time(&freenode->_deactivate_tm);
+
+	__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->move_free, freed, freenode);
+}
+
+static void
+_lfs_check_free(lfstack_t *lfs) {
+	lfs_time_t curr_time;
+	if (__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->in_free_mode, 0, 1)) {
+		lfs_get_curr_time(&curr_time);
+		lfstack_cas_node_t *rtfree = lfs->root_free, *nextfree;
+		while ( rtfree && (rtfree != lfs->move_free) ) {
+			nextfree = rtfree->nextfree;
+			if ( lfs_diff_time(curr_time, rtfree->_deactivate_tm) > 2) {
+				//	printf("%p\n", rtfree);
+				free(rtfree);
+				rtfree = nextfree;
+			} else {
+				break;
+			}
+		}
+		lfs->root_free = rtfree;
+		__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->in_free_mode, 1, 0);
+	}
+	__LFQ_SYNC_MEMORY();
 }
 
 int
-lfstack_init(lfstack_t *lfstack) {
-    lfstack_node_t *base = malloc(sizeof(lfstack_node_t));
-    if (base == NULL) {
-        return errno;
-    }
-    base->value = NULL;
-    base->prev = NULL;
+lfstack_init(lfstack_t *lfs) {
 
-    lfstack->head.aba = 0;
-    lfstack->head.node = base;
+	lfstack_cas_node_t *base = malloc(sizeof(lfstack_cas_node_t));
+	lfstack_cas_node_t *freebase = malloc(sizeof(lfstack_cas_node_t));
+	if (base == NULL || freebase == NULL) {
+		perror("malloc");
+		return errno;
+	}
+	base->value = NULL;
+	base->prev = NULL;
+	base->nextfree = NULL;
+	base->_deactivate_tm = 0;
 
-    lfstack->size = 0;
-    return 1;
+	freebase->value = NULL;
+	freebase->prev = NULL;
+	freebase->nextfree = NULL;
+	freebase->_deactivate_tm = 0;
+
+	lfs->head = base; // Not yet to be free for first node only
+	lfs->root_free = lfs->move_free = freebase; // Not yet to be free for first node only
+	lfs->size = 0;
+	lfs->in_free_mode = 0;
+
+	return 0;
 }
 
 void
-lfstack_clear(lfstack_t *lfstack) {
-    void* p;
-    while ( (p = lfstack_pop(lfstack)) ) {
-        free(p);
-    }
-    free(lfstack->head.node);
-    lfstack->size = 0;
+lfstack_destroy(lfstack_t *lfs) {
+	void* p;
+	while ((p = lfstack_pop(lfs))) {
+		free(p);
+	}
+	// Clear the recycle chain nodes
+	lfstack_cas_node_t *rtfree = lfs->root_free, *nextfree;
+	while (rtfree && (rtfree != lfs->move_free) ) {
+		nextfree = rtfree->nextfree;
+		free(rtfree);
+		rtfree = nextfree;
+	}
+	if (rtfree) {
+		free(rtfree);
+	}
+
+	lfs->size = 0;
+}
+
+void lfstack_flush(lfstack_t *lfstack) {
+	_lfs_check_free(lfstack);
 }
 
 int
-lfstack_push(lfstack_t *lfstack, void *value) {
-    if (push_(lfstack, value)) {
-        __atomic_fetch_add(&lfstack->size, 1, __ATOMIC_RELAXED);
-        return 1;
-    }
-    return 0;
+lfstack_push(lfstack_t *lfs, void *value) {
+	if (_push(lfs, value)) {
+		return -1;
+	}
+	__LFQ_ADD_AND_FETCH(&lfs->size, 1);
+	return 0;
 }
 
 void*
-lfstack_pop(lfstack_t *lfstack) {
-    lfstack_node_t *node;
-    void *v;
-    if ( __atomic_load_n(&lfstack->size, __ATOMIC_ACQUIRE) && (node = pop_(lfstack)) ) {
-        __atomic_fetch_add(&lfstack->size, -1, __ATOMIC_RELAXED);
-        v = node->value;
-        free(node);
-        return v;
-    }
-    return NULL;
+lfstack_pop(lfstack_t *lfs) {
+	void *v;
+	if (//__LFQ_ADD_AND_FETCH(&lfs->size, 0) &&
+	    (v = _pop(lfs))
+	) {
+
+		__LFQ_FETCH_AND_ADD(&lfs->size, -1);
+		return v;
+	}
+	// Rest the thread for other thread, to avoid keep looping force
+	lfstack_usleep(1000);
+	return NULL;
+}
+
+/**This is only applicable when only single thread consume only**/
+void*
+lfstack_single_pop(lfstack_t *lfs) {
+	void *v;
+	if (//__LFQ_ADD_AND_FETCH(&lfs->size, 0) &&
+	    (v = _single_pop(lfs))
+	) {
+
+		__LFQ_FETCH_AND_ADD(&lfs->size, -1);
+		return v;
+	}
+	// Rest the thread for other thread, to avoid keep looping force
+	lfstack_usleep(1000);
+	return NULL;
 }
 
 size_t
-lfstack_size(lfstack_t *lfstack) {
-    return __atomic_load_n(&lfstack->size, __ATOMIC_ACQUIRE);
+lfstack_size(lfstack_t *lfs) {
+	return __LFQ_ADD_AND_FETCH(&lfs->size, 0);
 }
+
+
+void lfstack_usleep(unsigned int usec) {
+#if defined __GNUC__ || defined __CYGWIN__ || defined __MINGW32__ || defined __APPLE__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
+	usleep(usec);
+#pragma GCC diagnostic pop
+#else
+	HANDLE hTimer;
+	LARGE_INTEGER DueTime;
+	DueTime.QuadPart = -(10 * (__int64)usec);
+	hTimer = CreateWaitableTimer(NULL, TRUE, NULL);
+	SetWaitableTimer(hTimer, &DueTime, 0, NULL, NULL, 0);
+	if (WaitForSingleObject(hTimer, INFINITE) != WAIT_OBJECT_0) {
+		/* TODO do nothing*/
+	}
+#endif
+}
+
+#ifdef __cplusplus
+}
+#endif

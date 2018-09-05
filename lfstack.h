@@ -1,5 +1,35 @@
-#ifndef LFSTACK_H
-#define LFSTACK_H
+/*
+*
+* BSD 2-Clause License
+*
+* Copyright (c) 2018, Taymindis Woon
+* All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without
+* modification, are permitted provided that the following conditions are met:
+*
+* * Redistributions of source code must retain the above copyright notice, this
+*   list of conditions and the following disclaimer.
+*
+* * Redistributions in binary form must reproduce the above copyright notice,
+*   this list of conditions and the following disclaimer in the documentation
+*   and/or other materials provided with the distribution.
+*
+* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+* AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+* DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+* FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+* SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+* CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+* OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+* OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*
+*/
+
+#ifndef LFQUEUE_H
+#define LFQUEUE_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -8,30 +38,23 @@
 extern "C" {
 #endif
 
-typedef struct lfstack_node_s{
-	struct lfstack_node_s *prev;
-	void * value;
-} lfstack_node_t;
-
-typedef struct lfstack_cas_node_s {
-	uintptr_t aba;
-	struct lfstack_node_s *node;
-} lfstack_cas_node_t;
-
+typedef struct lfstack_cas_node_s lfstack_cas_node_t;
 
 typedef struct {
-	lfstack_cas_node_t head;
-	size_t size;
+	lfstack_cas_node_t *head, *root_free, *move_free;
+	volatile size_t size;
+	volatile int in_free_mode;
 } lfstack_t;
 
-int   lfstack_init(lfstack_t *lfstack);
-int   lfstack_push(lfstack_t *lfstack, void *value);
-void *lfstack_pop(lfstack_t *lfstack);
-void lfstack_clear(lfstack_t *lfstack);
-size_t lfstack_size(lfstack_t *lfstack);
+extern int   lfstack_init(lfstack_t *lfstack);
+extern int   lfstack_push(lfstack_t *lfstack, void *value);
+extern void* lfstack_pop(lfstack_t *lfstack);
+extern void* lfstack_single_pop(lfstack_t *lfstack);
+/*** lfstack_flush to flush all the inacitve element ***/
+extern void lfstack_flush(lfstack_t *lfstack);
+extern void lfstack_destroy(lfstack_t *lfstack);
+extern size_t lfstack_size(lfstack_t *lfstack);
+extern void lfstack_usleep(unsigned int usec);
 
-#ifdef __cplusplus
-}
 #endif
 
-#endif

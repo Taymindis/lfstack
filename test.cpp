@@ -19,7 +19,7 @@ void *worker(void *arg)
         int_data = (long long*) malloc(sizeof(long long));
         assert(int_data != NULL);
         *int_data = i;
-        while (lfstack_push(&results, int_data) != 1) ;
+        while (lfstack_push(&results, int_data) == -1) ;
 
         while ( (int_data =(long long*) lfstack_pop(&results)) == NULL);
 
@@ -46,7 +46,7 @@ TEST(lfstackTest, CROSS_THREAD_MAIN_CALL) {
     for (i = 0; i < nthreads; i++)
         pthread_join(threads[i], NULL);
 
-    lfstack_clear(&results);
+    lfstack_destroy(&results);
 }
 
 int main(int argc, char **argv) {
