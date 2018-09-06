@@ -40,10 +40,20 @@ extern "C" {
 
 typedef struct lfstack_cas_node_s lfstack_cas_node_t;
 
+#if defined __GNUC__ || defined __CYGWIN__ || defined __MINGW32__ || defined __APPLE__
+#define lfs_bool_t int
+#else
+#ifdef _WIN64
+#define lfs_bool_t int64_t
+#else
+#define lfs_bool_t int
+#endif
+#endif
+
 typedef struct {
 	lfstack_cas_node_t *head, *root_free, *move_free;
 	volatile size_t size;
-	volatile int in_free_mode;
+	volatile lfs_bool_t in_free_mode;
 } lfstack_t;
 
 extern int   lfstack_init(lfstack_t *lfstack);

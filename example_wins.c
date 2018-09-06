@@ -56,7 +56,7 @@ int main(void)
 	if (lfstack_init(&mystack) == -1)
 		return -1;
 
-	for (n = 0; n < 100; n++) {
+	for (n = 0; n < 25; n++) {
 		/* Spawn threads. */
 		printf("Current running at %d, Total threads = %d\n", n, nthreads);
 		clock_t start = clock();
@@ -77,12 +77,12 @@ int main(void)
 		assert(0 == lfstack_size(&mystack) && "Error, all queue should be consumed but not");
 
 	}
-	printf("Take a 3 seconds sleep \n");
-	Sleep(3000);
+	printf("Take a 4 seconds sleep \n");
+	Sleep(4000);
 	printf("Flush all the inactive memory \n");
 	lfstack_flush(&mystack);
-	lfstack_destroy(&mystack);
 	printf("Press Any Key to Continue\n");
+	lfstack_destroy(&mystack);
 	getchar();
 	return 0;
 }
