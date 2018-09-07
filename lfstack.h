@@ -64,7 +64,7 @@ extern void* lfstack_single_pop(lfstack_t *lfstack);
 extern void lfstack_flush(lfstack_t *lfstack);
 extern void lfstack_destroy(lfstack_t *lfstack);
 extern size_t lfstack_size(lfstack_t *lfstack);
-extern void lfstack_usleep(unsigned int usec);
+extern void lfstack_sleep(unsigned int milisec);
 
 #endif
 

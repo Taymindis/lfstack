@@ -105,9 +105,9 @@ printf("current size= %d\n", (int) lfstack_size(mystack) )
 for (i = 0; i < nthreads; i++)\
 pthread_detach(threads[i]);\
 while ( nthreads_exited < nthreads ) \
-	lfstack_usleep(2000);\
+	lfstack_sleep(2);\
 if(lfstack_size(mystack) != 0){\
-lfstack_usleep(2000);\
+lfstack_sleep(2);\
 printf("current size= %zu\n", lfstack_size(mystack) );\
 }
 
@@ -156,7 +156,7 @@ int main(void)
 	if (lfstack_init(mystack) == -1)
 		return -1;
 
-	for (n = 0; n < 100; n++) {
+	for (n = 0; n < 30; n++) {
 		printf("Current running at =%d, ", n);
 		nthreads_exited = 0;
 
@@ -166,10 +166,10 @@ int main(void)
 		printf("Total requests %d \n", total_put);
 		gettimeofday(&tv1, NULL);
 
-		   one_push_and_multi_pop(threads);
+		//   one_push_and_multi_pop(threads);
 
-		//   one_pop_and_multi_push(threads);
-		// multi_push_pop(threads);
+		// one_pop_and_multi_push(threads);
+		 multi_push_pop(threads);
 
 		gettimeofday(&tv2, NULL);
 		printf ("Total time = %f seconds\n",
@@ -177,7 +177,7 @@ int main(void)
 		        (double) (tv2.tv_sec - tv1.tv_sec));
 
 		//getchar();
-		lfstack_usleep(1000);
+		lfstack_sleep(1);
 		assert ( 0 == lfstack_size(mystack) && "Error, all element should be pop out but not");
 	}
 

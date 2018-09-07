@@ -296,7 +296,7 @@ lfstack_pop(lfstack_t *lfs) {
 		return v;
 	}
 	// Rest the thread for other thread, to avoid keep looping force
-	lfstack_usleep(1000);
+	lfstack_sleep(1);
 	return NULL;
 }
 
@@ -312,7 +312,7 @@ lfstack_single_pop(lfstack_t *lfs) {
 		return v;
 	}
 	// Rest the thread for other thread, to avoid keep looping force
-	lfstack_usleep(1000);
+	lfstack_sleep(1);
 	return NULL;
 }
 
@@ -322,21 +322,15 @@ lfstack_size(lfstack_t *lfs) {
 }
 
 
-void lfstack_usleep(unsigned int usec) {
+void 
+lfstack_sleep(unsigned int milisec) {
 #if defined __GNUC__ || defined __CYGWIN__ || defined __MINGW32__ || defined __APPLE__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
-	usleep(usec);
+	usleep(milisec * 1000);
 #pragma GCC diagnostic pop
 #else
-	HANDLE hTimer;
-	LARGE_INTEGER DueTime;
-	DueTime.QuadPart = -(10 * (__int64)usec);
-	hTimer = CreateWaitableTimer(NULL, TRUE, NULL);
-	SetWaitableTimer(hTimer, &DueTime, 0, NULL, NULL, 0);
-	if (WaitForSingleObject(hTimer, INFINITE) != WAIT_OBJECT_0) {
-		/* TODO do nothing*/
-	}
+	Sleep(milisec);
 #endif
 }
 
