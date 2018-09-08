@@ -33,7 +33,7 @@
 #if defined __GNUC__ || defined __CYGWIN__ || defined __MINGW32__ || defined __APPLE__
 
 #include <sys/time.h>
-#include <pthread.h>
+#include <unistd.h> // for usleep
 #include <sched.h>
 
 #define __LFQ_VAL_COMPARE_AND_SWAP __sync_val_compare_and_swap
@@ -42,8 +42,6 @@
 #define __LFQ_ADD_AND_FETCH __sync_add_and_fetch
 #define __LFQ_YIELD_THREAD sched_yield
 #define __LFQ_SYNC_MEMORY __sync_synchronize
-#define __LFQ_LOAD_MEMORY() __asm volatile( "lfence" )
-#define __LFQ_STORE_MEMORY() __asm volatile( "sfence" )
 
 #else
 
@@ -269,6 +267,8 @@ lfstack_destroy(lfstack_t *lfs) {
 		free(rtfree);
 	}
 
+	free(lfs->head); // Last free
+
 	lfs->size = 0;
 }
 
@@ -320,7 +320,6 @@ size_t
 lfstack_size(lfstack_t *lfs) {
 	return __LFQ_ADD_AND_FETCH(&lfs->size, 0);
 }
-
 
 void 
 lfstack_sleep(unsigned int milisec) {
