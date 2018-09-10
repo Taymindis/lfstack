@@ -1,8 +1,8 @@
 version: 1.0.{build}
 configuration: Release
 platform:
-- x64
 - x86
+- x64
 build:
   verbosity: minimal
 after_build:
