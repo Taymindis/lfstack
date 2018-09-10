@@ -3,8 +3,6 @@ language: c
 compiler:
   - gcc
   - clang
-  - g++
-  - clang++
 
 before_script:
   - mkdir build
