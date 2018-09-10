@@ -83,7 +83,6 @@ int main(void)
 	lfstack_flush(&mystack);
 	//printf("Press Any Key to Continue\n");
 	lfstack_destroy(&mystack);
-	getchar();
 	return 0;
 }
 
