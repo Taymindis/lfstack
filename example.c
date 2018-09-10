@@ -166,10 +166,51 @@ int main(void)
 		printf("Total requests %d \n", total_put);
 		gettimeofday(&tv1, NULL);
 
-		//   one_push_and_multi_pop(threads);
+		multi_push_pop(threads);
 
-		// one_pop_and_multi_push(threads);
-		 multi_push_pop(threads);
+		gettimeofday(&tv2, NULL);
+		printf ("Total time = %f seconds\n",
+		        (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+		        (double) (tv2.tv_sec - tv1.tv_sec));
+
+		//getchar();
+		lfstack_sleep(1);
+		assert ( 0 == lfstack_size(mystack) && "Error, all element should be pop out but not");
+	}
+
+	for (n = 0; n < 30; n++) {
+		printf("Current running at =%d, ", n);
+		nthreads_exited = 0;
+
+		/* Spawn threads. */
+		pthread_t threads[nthreads];
+		printf("Using %d thread%s.\n", nthreads, nthreads == 1 ? "" : "s");
+		printf("Total requests %d \n", total_put);
+		gettimeofday(&tv1, NULL);
+
+		one_push_and_multi_pop(threads);
+
+		gettimeofday(&tv2, NULL);
+		printf ("Total time = %f seconds\n",
+		        (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+		        (double) (tv2.tv_sec - tv1.tv_sec));
+
+		//getchar();
+		lfstack_sleep(1);
+		assert ( 0 == lfstack_size(mystack) && "Error, all element should be pop out but not");
+	}
+
+	for (n = 0; n < 30; n++) {
+		printf("Current running at =%d, ", n);
+		nthreads_exited = 0;
+
+		/* Spawn threads. */
+		pthread_t threads[nthreads];
+		printf("Using %d thread%s.\n", nthreads, nthreads == 1 ? "" : "s");
+		printf("Total requests %d \n", total_put);
+		gettimeofday(&tv1, NULL);
+
+		one_pop_and_multi_push(threads);
 
 		gettimeofday(&tv2, NULL);
 		printf ("Total time = %f seconds\n",

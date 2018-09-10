@@ -1,0 +1,9 @@
+version: 1.0.{build}
+configuration: Release
+platform:
+- x64
+- x86
+build:
+  verbosity: minimal
+after_build:
+- cmd: IF "%PLATFORM%"=="x64" ( C:\projects\lfstack\lfstack_vs\%PLATFORM%\Release\lfstack_vs.exe ) ELSE ( C:\projects\lfstack\lfstack_vs\Release\lfstack_vs.exe )
