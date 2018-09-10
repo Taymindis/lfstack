@@ -1,5 +1,12 @@
-# lfstack
+# lfstack [![Build Status](https://travis-ci.org/Taymindis/lfstack.svg?branch=master)](https://travis-ci.org/Taymindis/lfstack)
+
 lock-free LIFO stack by C native built it, easy built cross platform(no extra dependencies needed) , guarantee thread safety memory management ever!
+
+# All Platform tests
+
+GCC/CLANG | [![Build Status](https://travis-ci.org/Taymindis/lfstack.svg?branch=master)](https://travis-ci.org/Taymindis/lfstack)
+
+VS x64/x86 | [![Build status](https://ci.appveyor.com/api/projects/status/cojd0vosutha2yml/branch/master?svg=true)](https://ci.appveyor.com/project/Taymindis/lfstack/branch/master)
 
 
 ## API 
