@@ -81,7 +81,7 @@ int main(void)
 	Sleep(4000);
 	printf("Flush all the inactive memory \n");
 	lfstack_flush(&mystack);
-	printf("Press Any Key to Continue\n");
+	//printf("Press Any Key to Continue\n");
 	lfstack_destroy(&mystack);
 	getchar();
 	return 0;

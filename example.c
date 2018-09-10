@@ -226,8 +226,8 @@ int main(void)
 	sleep(4);
 	printf("Flush all the inactive memory \n");
 	lfstack_flush(mystack);
-	printf("Check the memory usage, it should all flushed, press any key to exit \n");
-	getchar();
+	// printf("Check the memory usage, it should all flushed, press any key to exit \n");
+	// getchar();
 	lfstack_destroy(mystack);
 	free(mystack);
 
