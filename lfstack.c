@@ -36,12 +36,12 @@
 #include <unistd.h> // for usleep
 #include <sched.h>
 
-#define __LFQ_VAL_COMPARE_AND_SWAP __sync_val_compare_and_swap
-#define __LFQ_BOOL_COMPARE_AND_SWAP __sync_bool_compare_and_swap
-#define __LFQ_FETCH_AND_ADD __sync_fetch_and_add
-#define __LFQ_ADD_AND_FETCH __sync_add_and_fetch
-#define __LFQ_YIELD_THREAD sched_yield
-#define __LFQ_SYNC_MEMORY __sync_synchronize
+#define __LFS_VAL_COMPARE_AND_SWAP __sync_val_compare_and_swap
+#define __LFS_BOOL_COMPARE_AND_SWAP __sync_bool_compare_and_swap
+#define __LFS_FETCH_AND_ADD __sync_fetch_and_add
+#define __LFS_ADD_AND_FETCH __sync_add_and_fetch
+#define __LFS_YIELD_THREAD sched_yield
+#define __LFS_SYNC_MEMORY __sync_synchronize
 
 #else
 
@@ -51,13 +51,13 @@
 inline BOOL __SYNC_BOOL_CAS(LONG64 volatile *dest, LONG64 input, LONG64 comparand) {
 	return InterlockedCompareExchangeNoFence64(dest, input, comparand) == comparand;
 }
-#define __LFQ_VAL_COMPARE_AND_SWAP(dest, comparand, input) \
+#define __LFS_VAL_COMPARE_AND_SWAP(dest, comparand, input) \
     InterlockedCompareExchangeNoFence64((LONG64 volatile *)dest, (LONG64)input, (LONG64)comparand)
-#define __LFQ_BOOL_COMPARE_AND_SWAP(dest, comparand, input) \
+#define __LFS_BOOL_COMPARE_AND_SWAP(dest, comparand, input) \
     __SYNC_BOOL_CAS((LONG64 volatile *)dest, (LONG64)input, (LONG64)comparand)
-#define __LFQ_FETCH_AND_ADD InterlockedExchangeAddNoFence64
-#define __LFQ_ADD_AND_FETCH InterlockedAddNoFence64
-#define __LFQ_SYNC_MEMORY MemoryBarrier
+#define __LFS_FETCH_AND_ADD InterlockedExchangeAddNoFence64
+#define __LFS_ADD_AND_FETCH InterlockedAddNoFence64
+#define __LFS_SYNC_MEMORY MemoryBarrier
 
 #else
 #ifndef asm
@@ -66,21 +66,21 @@ inline BOOL __SYNC_BOOL_CAS(LONG64 volatile *dest, LONG64 input, LONG64 comparan
 inline BOOL __SYNC_BOOL_CAS(LONG volatile *dest, LONG input, LONG comparand) {
 	return InterlockedCompareExchangeNoFence(dest, input, comparand) == comparand;
 }
-#define __LFQ_VAL_COMPARE_AND_SWAP(dest, comparand, input) \
+#define __LFS_VAL_COMPARE_AND_SWAP(dest, comparand, input) \
     InterlockedCompareExchangeNoFence((LONG volatile *)dest, (LONG)input, (LONG)comparand)
-#define __LFQ_BOOL_COMPARE_AND_SWAP(dest, comparand, input) \
+#define __LFS_BOOL_COMPARE_AND_SWAP(dest, comparand, input) \
     __SYNC_BOOL_CAS((LONG volatile *)dest, (LONG)input, (LONG)comparand)
-#define __LFQ_FETCH_AND_ADD InterlockedExchangeAddNoFence
-#define __LFQ_ADD_AND_FETCH InterlockedAddNoFence
-#define __LFQ_SYNC_MEMORY() asm mfence
+#define __LFS_FETCH_AND_ADD InterlockedExchangeAddNoFence
+#define __LFS_ADD_AND_FETCH InterlockedAddNoFence
+#define __LFS_SYNC_MEMORY() asm mfence
 
 #endif
 #include <windows.h>
-#define __LFQ_YIELD_THREAD SwitchToThread
+#define __LFS_YIELD_THREAD SwitchToThread
 #endif
 
 #include "lfstack.h"
-#define DEF_LFQ_ASSIGNED_SPIN 2048
+#define DEF_LFS_ASSIGNED_SPIN 2048
 
 #if defined __GNUC__ || defined __CYGWIN__ || defined __MINGW32__ || defined __APPLE__
 #define lfs_time_t long
@@ -101,7 +101,6 @@ struct lfstack_cas_node_s {
 	lfs_time_t _deactivate_tm;
 };
 
-//static lfstack_cas_node_t* __lfq_assigned(lfstack_t *);
 static void __lfs_recycle_free(lfstack_t *, lfstack_cas_node_t*);
 static void _lfs_check_free(lfstack_t *);
 static void *_pop(lfstack_t *);
@@ -115,12 +114,12 @@ _pop(lfstack_t *lfs) {
 
 	for (;;) {
 		head = lfs->head;
-		__LFQ_SYNC_MEMORY();
+		__LFS_SYNC_MEMORY();
 		/** ABA PROBLEM? in order to solve this, I use time free to avoid realloc the same aligned address **/
 		if (lfs->head == head) {
 			prev = head->prev;
 			if (prev) {
-				if (__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->head, head, prev)) {
+				if (__LFS_BOOL_COMPARE_AND_SWAP(&lfs->head, head, prev)) {
 					val = head->value;
 					break;
 				}
@@ -132,10 +131,10 @@ _pop(lfstack_t *lfs) {
 		}
 	}
 	__lfs_recycle_free(lfs, head);
-	__LFQ_YIELD_THREAD();
+	__LFS_YIELD_THREAD();
 _done:
 // __asm volatile("" ::: "memory");
-	__LFQ_SYNC_MEMORY();
+	__LFS_SYNC_MEMORY();
 	_lfs_check_free(lfs);
 	return val;
 }
@@ -147,11 +146,11 @@ _single_pop(lfstack_t *lfs) {
 
 	for (;;) {
 		head = lfs->head;
-		__LFQ_SYNC_MEMORY();
+		__LFS_SYNC_MEMORY();
 		if (lfs->head == head) {
 			prev = head->prev;
 			if (prev) {
-				if (__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->head, head, prev)) {
+				if (__LFS_BOOL_COMPARE_AND_SWAP(&lfs->head, head, prev)) {
 					val = head->value;
 					free(head);
 					break;
@@ -176,9 +175,9 @@ _push(lfstack_t *lfs, void* value) {
 	new_head->value = value;
 	new_head->nextfree = NULL;
 	for (;;) {
-		__LFQ_SYNC_MEMORY();
+		__LFS_SYNC_MEMORY();
 		new_head->prev = head = lfs->head;
-		if (__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->head, head, new_head)) {
+		if (__LFS_BOOL_COMPARE_AND_SWAP(&lfs->head, head, new_head)) {
 			// always check any free value
 			_lfs_check_free(lfs);
 			return 0;
@@ -194,17 +193,17 @@ __lfs_recycle_free(lfstack_t *lfs, lfstack_cas_node_t* freenode) {
 	lfstack_cas_node_t *freed;
 	do {
 		freed = lfs->move_free;
-	} while (!__LFQ_BOOL_COMPARE_AND_SWAP(&freed->nextfree, NULL, freenode) );
+	} while (!__LFS_BOOL_COMPARE_AND_SWAP(&freed->nextfree, NULL, freenode) );
 
 	lfs_get_curr_time(&freenode->_deactivate_tm);
 
-	__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->move_free, freed, freenode);
+	__LFS_BOOL_COMPARE_AND_SWAP(&lfs->move_free, freed, freenode);
 }
 
 static void
 _lfs_check_free(lfstack_t *lfs) {
 	lfs_time_t curr_time;
-	if (__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->in_free_mode, 0, 1)) {
+	if (__LFS_BOOL_COMPARE_AND_SWAP(&lfs->in_free_mode, 0, 1)) {
 		lfs_get_curr_time(&curr_time);
 		lfstack_cas_node_t *rtfree = lfs->root_free, *nextfree;
 		while ( rtfree && (rtfree != lfs->move_free) ) {
@@ -218,9 +217,9 @@ _lfs_check_free(lfstack_t *lfs) {
 			}
 		}
 		lfs->root_free = rtfree;
-		__LFQ_BOOL_COMPARE_AND_SWAP(&lfs->in_free_mode, 1, 0);
+		__LFS_BOOL_COMPARE_AND_SWAP(&lfs->in_free_mode, 1, 0);
 	}
-	__LFQ_SYNC_MEMORY();
+	__LFS_SYNC_MEMORY();
 }
 
 int
@@ -281,34 +280,45 @@ lfstack_push(lfstack_t *lfs, void *value) {
 	if (_push(lfs, value)) {
 		return -1;
 	}
-	__LFQ_ADD_AND_FETCH(&lfs->size, 1);
+	__LFS_ADD_AND_FETCH(&lfs->size, 1);
 	return 0;
 }
 
 void*
 lfstack_pop(lfstack_t *lfs) {
 	void *v;
-	if (//__LFQ_ADD_AND_FETCH(&lfs->size, 0) &&
+	if (//__LFS_ADD_AND_FETCH(&lfs->size, 0) &&
 	    (v = _pop(lfs))
 	) {
 
-		__LFQ_FETCH_AND_ADD(&lfs->size, -1);
+		__LFS_FETCH_AND_ADD(&lfs->size, -1);
 		return v;
 	}
 	// Rest the thread for other thread, to avoid keep looping force
 	lfstack_sleep(1);
 	return NULL;
+}
+
+void*
+lfstack_pop_must(lfstack_t *lfs) {
+	void *v;
+	while ( !(v = _pop(lfs)) ) {
+		// Rest the thread for other thread, to avoid keep looping force
+		lfstack_sleep(1);
+	}
+	__LFS_FETCH_AND_ADD(&lfs->size, -1);
+	return v;
 }
 
 /**This is only applicable when only single thread consume only**/
 void*
 lfstack_single_pop(lfstack_t *lfs) {
 	void *v;
-	if (//__LFQ_ADD_AND_FETCH(&lfs->size, 0) &&
+	if (//__LFS_ADD_AND_FETCH(&lfs->size, 0) &&
 	    (v = _single_pop(lfs))
 	) {
 
-		__LFQ_FETCH_AND_ADD(&lfs->size, -1);
+		__LFS_FETCH_AND_ADD(&lfs->size, -1);
 		return v;
 	}
 	// Rest the thread for other thread, to avoid keep looping force
@@ -316,12 +326,23 @@ lfstack_single_pop(lfstack_t *lfs) {
 	return NULL;
 }
 
-size_t
-lfstack_size(lfstack_t *lfs) {
-	return __LFQ_ADD_AND_FETCH(&lfs->size, 0);
+void*
+lfstack_single_pop_must(lfstack_t *lfs) {
+	void *v;
+	while ( !(v = _single_pop(lfs)) ) {
+		// Rest the thread for other thread, to avoid keep looping force
+		lfstack_sleep(1);
+	}
+	__LFS_FETCH_AND_ADD(&lfs->size, -1);
+	return v;
 }
 
-void 
+size_t
+lfstack_size(lfstack_t *lfs) {
+	return __LFS_ADD_AND_FETCH(&lfs->size, 0);
+}
+
+void
 lfstack_sleep(unsigned int milisec) {
 #if defined __GNUC__ || defined __CYGWIN__ || defined __MINGW32__ || defined __APPLE__
 #pragma GCC diagnostic push

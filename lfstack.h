@@ -60,6 +60,11 @@ extern int   lfstack_init(lfstack_t *lfstack);
 extern int   lfstack_push(lfstack_t *lfstack, void *value);
 extern void* lfstack_pop(lfstack_t *lfstack);
 extern void* lfstack_single_pop(lfstack_t *lfstack);
+
+/** loop until value been pop, it sleeps 1ms if not found, to reduce cpu high usage **/
+extern void* lfstack_pop_must(lfstack_t *lfstack);
+extern void* lfstack_single_pop_must(lfstack_t *lfstack);
+
 /*** lfstack_flush to flush all the inacitve element ***/
 extern void lfstack_flush(lfstack_t *lfstack);
 extern void lfstack_destroy(lfstack_t *lfstack);
