@@ -28,8 +28,8 @@
 *
 */
 
-#ifndef LFQUEUE_H
-#define LFQUEUE_H
+#ifndef LFSTACK_H
+#define LFSTACK_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -39,6 +39,8 @@ extern "C" {
 #endif
 
 typedef struct lfstack_cas_node_s lfstack_cas_node_t;
+typedef void* (*lfstack_malloc_fn)(void*, size_t);
+typedef void (*lfstack_free_fn)(void*, void*);
 
 #if defined __GNUC__ || defined __CYGWIN__ || defined __MINGW32__ || defined __APPLE__
 #define lfs_bool_t int
@@ -54,9 +56,13 @@ typedef struct {
 	lfstack_cas_node_t *head, *root_free, *move_free;
 	volatile size_t size;
 	volatile lfs_bool_t in_free_mode;
+	lfstack_malloc_fn _malloc;
+	lfstack_free_fn _free;
+	void *pl;
 } lfstack_t;
 
 extern int   lfstack_init(lfstack_t *lfstack);
+extern int   lfstack_init_mf(lfstack_t *lfs, void* pl, lfstack_malloc_fn lfs_malloc, lfstack_free_fn lfs_free);
 extern int   lfstack_push(lfstack_t *lfstack, void *value);
 extern void* lfstack_pop(lfstack_t *lfstack);
 extern void* lfstack_single_pop(lfstack_t *lfstack);

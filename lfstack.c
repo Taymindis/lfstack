@@ -106,6 +106,12 @@ static void _lfs_check_free(lfstack_t *);
 static void *_pop(lfstack_t *);
 static void *_single_pop(lfstack_t *);
 static int _push(lfstack_t *, void* );
+static inline void* _lfstack_malloc(void* pl, size_t sz) {
+	return malloc(sz);
+}
+static inline void _lfstack_free(void* pl, void* ptr) {
+	free(ptr);
+}
 
 static void *
 _pop(lfstack_t *lfs) {
@@ -152,7 +158,7 @@ _single_pop(lfstack_t *lfs) {
 			if (prev) {
 				if (__LFS_BOOL_COMPARE_AND_SWAP(&lfs->head, head, prev)) {
 					val = head->value;
-					free(head);
+					lfs->_free(lfs->pl, head);
 					break;
 				}
 			} else {
@@ -167,7 +173,7 @@ _single_pop(lfstack_t *lfs) {
 static int
 _push(lfstack_t *lfs, void* value) {
 	lfstack_cas_node_t *head, *new_head;
-	new_head = (lfstack_cas_node_t*) malloc(sizeof(lfstack_cas_node_t));
+	new_head = (lfstack_cas_node_t*) lfs->_malloc(lfs->pl, sizeof(lfstack_cas_node_t));
 	if (new_head == NULL) {
 		perror("malloc");
 		return errno;
@@ -210,7 +216,7 @@ _lfs_check_free(lfstack_t *lfs) {
 			nextfree = rtfree->nextfree;
 			if ( lfs_diff_time(curr_time, rtfree->_deactivate_tm) > 2) {
 				//	printf("%p\n", rtfree);
-				free(rtfree);
+				lfs->_free(lfs->pl, rtfree);
 				rtfree = nextfree;
 			} else {
 				break;
@@ -224,9 +230,17 @@ _lfs_check_free(lfstack_t *lfs) {
 
 int
 lfstack_init(lfstack_t *lfs) {
+	return lfstack_init_mf(lfs, NULL, _lfstack_malloc, _lfstack_free);
+}
 
-	lfstack_cas_node_t *base = malloc(sizeof(lfstack_cas_node_t));
-	lfstack_cas_node_t *freebase = malloc(sizeof(lfstack_cas_node_t));
+int
+lfstack_init_mf(lfstack_t *lfs, void* pl, lfstack_malloc_fn lfs_malloc, lfstack_free_fn lfs_free) {
+	lfs->_malloc = lfs_malloc;
+	lfs->_free = lfs_free;
+	lfs->pl = pl;
+
+	lfstack_cas_node_t *base = lfs->_malloc(lfs->pl, sizeof(lfstack_cas_node_t));
+	lfstack_cas_node_t *freebase = lfs->_malloc(lfs->pl, sizeof(lfstack_cas_node_t));
 	if (base == NULL || freebase == NULL) {
 		perror("malloc");
 		return errno;
@@ -253,20 +267,20 @@ void
 lfstack_destroy(lfstack_t *lfs) {
 	void* p;
 	while ((p = lfstack_pop(lfs))) {
-		free(p);
+		lfs->_free(lfs->pl, p);
 	}
 	// Clear the recycle chain nodes
 	lfstack_cas_node_t *rtfree = lfs->root_free, *nextfree;
 	while (rtfree && (rtfree != lfs->move_free) ) {
 		nextfree = rtfree->nextfree;
-		free(rtfree);
+		lfs->_free(lfs->pl, rtfree);
 		rtfree = nextfree;
 	}
 	if (rtfree) {
-		free(rtfree);
+		lfs->_free(lfs->pl, rtfree);
 	}
 
-	free(lfs->head); // Last free
+	lfs->_free(lfs->pl, lfs->head); // Last free
 
 	lfs->size = 0;
 }

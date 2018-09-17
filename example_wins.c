@@ -56,7 +56,7 @@ int main(void)
 	if (lfstack_init(&mystack) == -1)
 		return -1;
 
-	for (n = 0; n < 25; n++) {
+	for (n = 0; n < 100; n++) {
 		/* Spawn threads. */
 		printf("Current running at %d, Total threads = %d\n", n, nthreads);
 		clock_t start = clock();
